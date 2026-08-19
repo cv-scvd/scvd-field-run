@@ -9,9 +9,11 @@
 |--------|-------|
 | **Ledger entries** | 1,707 |
 | **Unique domains visited** | 1,589 (100% of walkable set) |
-| **Successful paid purchases** | 489 (28.6%) |
-| **Total spent** | $5.7355 of $10 cap |
-| **Untapped cap** | $4.26 |
+| **Successful paid purchases (ledger)** | 489 (28.6%) |
+| **Ledger spend** | $5.7355 |
+| **On-chain spend (Basescan)** | $6.3970 across 669 transfers |
+| **Reconciliation gap** | $0.6615 (180 on-chain transfers not recorded as paid in ledger) |
+| **Untapped cap** | $3.60 (on-chain) / $4.26 (ledger) |
 
 The walk is **complete**. Every domain in the walkable set was hit, at least once. Batch 14 was the last numbered batch; the remaining 189 domains were finished in two focused passes (domain-filtered, no skip waste).
 
@@ -83,6 +85,34 @@ Six fleets (Vercel, Workers, Railway, Klymax, TheAslangroup, LonestarOracle) acc
 - The failure is almost never "no wallet/gas" — it's **facilitator rejection** and **non-standard challenges**.
 - tx_hash capture remains poor: facilitator settles off-chain, so most successful responses carry no on-chain hash.
 
+### 7. Basescan reconciliation (2026-08-19)
+
+On-chain USDC transfers from the field-run wallet (0x843b544bf5f0AA6cbf13E94563874878C98cc4a7) were pulled via Base RPC and reconciled against the ledger.
+
+| Metric | Ledger | On-chain | Gap |
+|--------|--------|----------|-----|
+| Paid entries | 489 | 669 | 180 |
+| Total spend | $5.7355 | $6.3970 | $0.6615 |
+
+**The ledger underreports actual spend by ~10.3%.** 180 on-chain transfers settled but were never recorded as "paid" in the ledger. The gap is concentrated at the cheapest tiers:
+
+| Amount | On-chain | Ledger | Missing |
+|--------|----------|--------|---------|
+| $0.001 | 283 | 157 | 126 |
+| $0.010 | 127 | 105 | 22 |
+| $0.002 | 50 | 36 | 14 |
+| $0.005 | 59 | 52 | 7 |
+| $0.020 | 36 | 31 | 5 |
+
+Root cause: the field-run script signs and sends the payment, but if the response doesn't return 200 (or the script crashes/times out before logging), the payment still settles on-chain while the ledger records a failure. The ledger is the deliverable but it's a **lower bound** on actual spend — the on-chain record is the ground truth.
+
+All 3 recorded tx_hashes verified on-chain (status 1):
+- `0x6c514d2a35bd6835...` — x402.fiasignals.com ($0.03)
+- `0xe740fea2d9b80d65...` — aurelius-node-01.onrender.com ($0.05)
+- `0xbecaa780c0b446a9...` — aurelius-node-02-socal.onrender.com ($0.05)
+
+On-chain transfer data: `usdc-transfers.json` (669 transfers, blocks 50140000–50180000).
+
 ---
 
 ## WHAT THIS MEANS FOR scvd-STYLE AGENTS
@@ -97,7 +127,7 @@ Six fleets (Vercel, Workers, Railway, Klymax, TheAslangroup, LonestarOracle) acc
 
 ## RAW DATA
 
-- **Ledger (the deliverable):** `/home/cv/.openclaw/workspace/research/field-run-2026-08-18/ledger.jsonl` — 1,707 entries, every request, every failure, every payment
+- **Ledger (the deliverable):** `research/field-run-2026-08-18/ledger.jsonl` (repo-relative; also the field script's `LEDGER_PATH` in `field-run-v2.mjs`) — 1,707 entries, every request, every failure, every payment
 - **v1 ledger (anonymous):** `ledger-v1-anonymous.jsonl` — first 100, UA stripped per keeper
 - **Endpoint catalog:** `endpoint-catalog.json` — 30,494 endpoints from api.agentic.market
 - **Walkable set:** `walkable-set.json` — 22,828 Base endpoints ≤$0.05, 1,589 domains
