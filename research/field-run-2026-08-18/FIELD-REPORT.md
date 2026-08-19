@@ -1,110 +1,110 @@
-# x402 FIELD REPORT — Week 1
-## 2026-08-18 20:33 UTC
+# x402 FIELD REPORT — Complete Ecosystem Walk
+## 2026-08-18/19 — final version
 
 ---
 
-## THE NUMBERS
+## THE NUMBERS (final, all 1,589 domains walked)
 
-**Preflight sweep:** 1189 domains checked (no payment sent)
-**Field run:** 100 purchase attempts, 45 successful, $0.05 spent
-
----
-
-## PREFLIGHT SWEEP — 1189 domains
-
-Hit every endpoint with no payment header. Recorded status code and whether the 402 body contains machine-readable payment info.
-
-### Status distribution
-| Status | Count | % |
-|--------|-------|---|
-| 402 | 1053 | 88.6% |
-| 200 | 16 | 1.3% |
-| 400 | 56 | 4.7% |
-| 404 | 32 | 2.7% |
-| Error | 10 | 0.8% |
-| Other | 22 | — |
-
-### 402 breakdown
-- **Well-formed paymentRequirements:** 345 (32.8% of 402s)
-- **Bare/custom body:** 708 (67.2% of 402s)
-
-### Finding 1: 87% of the ecosystem gates correctly
-88.6% of endpoints return HTTP 402 when hit without payment. The x402 middleware pattern is widely adopted.
-
-### Finding 2: The 402 body is NOT standardized
-Only 32.8% of 402s use the standard paymentRequirements field. The rest use:
-- `accepts` array (x402 v1 style)
-- `x402Version` + `resource` object (x402 v2 style)
-- Custom error messages with pricing info
-- Empty bodies ({})
-- PAYMENT-REQUIRED header (base64-encoded, not in body)
-
-An agent needs to handle at least 4 different response formats to extract payment info.
-
-### Finding 3: 16 endpoints are fully open (1.3%)
-These return 200 with real data, no payment required. Some may be intentionally free; others may be misconfigured.
-
-### Finding 4: Ghost endpoints persist
-10 of 1189 (0.8%) are dead — DNS failures, timeouts. The catalog has no liveness checking.
-
----
-
-## FIELD RUN — 100 purchase attempts
-
-Actually bought from 45 endpoints. Spent $0.05 total.
-
-### Results
-| Outcome | Count | % |
-|---------|-------|---|
-| Success | 45 | 45.0% |
-| Failed | 55 | 55.0% |
-
-### Failure reasons
-| Reason | Count |
+| Metric | Value |
 |--------|-------|
-| Payment failed: 400 | 28 |
-| Payment failed: 422 | 5 |
-| cannot resolve ENS names without a provider (operation="reso | 5 |
-| Payment failed: 402 | 4 |
-| No PAYMENT-REQUIRED header | 3 |
-| Payment failed: 401 | 2 |
-| Payment failed: 500 | 2 |
-| Amount $10 exceeds per-buy cap $0.1 | 1 |
-| Expected 402, got 404 | 1 |
-| Amount $1 exceeds per-buy cap $0.1 | 1 |
+| **Ledger entries** | 1,707 |
+| **Unique domains visited** | 1,589 (100% of walkable set) |
+| **Successful paid purchases** | 489 (28.6%) |
+| **Total spent** | $5.7355 of $10 cap |
+| **Untapped cap** | $4.26 |
 
-### What the failures tell us
-
-The 55 failures break down into:
-- **Facilitator rejects:** The payment was signed correctly but the facilitator (Coinbase CDP, etc.) rejected it. This is the most common failure mode.
-- **No PAYMENT-REQUIRED header:** The endpoint returned 402 but didn't include the payment challenge in the header. The body might have it, but the header is the standard.
-- **Amount exceeds cap:** Some endpoints listed at $0.001 actually charge more when you parse the real requirements.
-- **Connection errors:** Dead endpoints, DNS failures, timeouts.
-
-### The 45% success rate is the real number
-Out of 100 attempts, 45 succeeded. That's the actual hit rate for an agent walking the x402 ecosystem with a wallet. The other 55% fail for reasons that have nothing to do with the agent's competence — facilitator issues, non-standard responses, dead endpoints.
+The walk is **complete**. Every domain in the walkable set was hit, at least once. Batch 14 was the last numbered batch; the remaining 189 domains were finished in two focused passes (domain-filtered, no skip waste).
 
 ---
 
-## WHAT THIS MEANS
+## WHAT THE ECOSYSTEM ACTUALLY LOOKS LIKE
 
-The x402 ecosystem is **broad but shallow**. Most endpoints know to ask for payment; the infrastructure for actually paying is fragmented. The gap between "returns 402" and "accepts a properly signed payment" is where agent UX breaks down.
+### 1. The gate is real but shallow
+- **87-88%** of endpoints return HTTP 402 when hit without payment (preflight).
+- But only **~29%** of properly-signed payment attempts actually succeed.
+- The gap between "asks for payment" and "accepts a signed payment" is the whole story.
 
-The 45% success rate is the number that matters. If you're building an agent that needs to pay for things, you need to handle:
-1. Four different 402 response formats
-2. Facilitator rejects (retry logic, fallback facilitators)
-3. Dead endpoints (liveness checking)
-4. Non-standard payment challenges (header vs body)
+### 2. Success rate by price tier
+
+| Tier | Attempts | Paid | Success % |
+|------|----------|------|-----------|
+| Free ($0) | 261 | 0 | 0% (nothing to pay) |
+| Low ($0.01-0.03) | 1,248 | 430 | 34% |
+| Mid ($0.04-0.05) | 164 | 58 | 35% |
+| High (>$0.05) | ~34 | 1 | ~3% |
+
+The cheap stuff ($0.01–$0.05) settles at a workable ~34%. Above $0.05, success collapses — facilitators reject, caps get hit, or the amount is misdeclared in the catalog.
+
+### 3. Failure taxonomy (from 1,707 attempts)
+
+| Failure | Count | Meaning |
+|---------|-------|---------|
+| Payment failed: 400 | 667 | Facilitator/middleware rejects the signed payment |
+| Still 402 after paying | 188 | Server keeps demanding payment despite valid signature |
+| 422 | 129 | Unprocessable request body |
+| 404 | 82 | Ghost endpoint |
+| No PAYMENT-REQUIRED header | 81 | 402 returned but no machine-readable challenge |
+| 500/502 | 60 | Server-side errors |
+| ENS resolution error | 21 | payTo is an ENS name, no resolver available |
+| 405/401/403/415 | ~39 | Method/auth/content-type rejects |
+
+**Single biggest failure: "Payment failed: 400" (39% of all entries).** The payment is signed per spec but the facilitator rejects it. This is not an agent error — it's the ecosystem's #1 real-world friction point.
+
+### 4. The response format is broken, not the concept
+An agent must parse at least **4 different** 402 response shapes:
+- `paymentRequirements` field (only ~33% use the standard)
+- `accepts` array (x402 v1 style)
+- `x402Version` + `resource` object (v2 style)
+- PAYMENT-REQUIRED header, base64-encoded, body empty
+- Custom error bodies with pricing buried in prose
+
+This is the single biggest spec-compliance gap. Two endpoints both "speak x402" but structure the challenge differently, and the buyer can't tell without trial and error.
+
+### 5. Host fleets dominate — the ecosystem is a handful of operators
+
+| Fleet (root) | Domains | Attempts | Paid |
+|--------------|---------|----------|------|
+| vercel.app | 147 | 158 | 52 |
+| workers.dev | 101 | 106 | 30 |
+| railway.app | 81 | 82 | 17 |
+| klymax402.com | 70 | 70 | 13 |
+| theaslangroupllc.com | 44 | 44 | 11 |
+| lonestaroracle.xyz | 41 | 42 | 29 |
+| onrender.com | 38 | 42 | 18 |
+| x402atlas.com | 37 | 37 | 26 |
+| halowerk.com | 35 | 35 | 5 |
+| hergertsynthora.com | 25 | 26 | 4 |
+
+Six fleets (Vercel, Workers, Railway, Klymax, TheAslangroup, LonestarOracle) account for over 470 domains — nearly a third of the entire walkable set. **x402 is not a broad ecosystem; it's a handful of operators running multi-domain patterns.** LonestarOracle and x402atlas are the most functional (highest success rates); underscoredone.com returned **0 paid in 18 attempts** (pure 400-reject fleet).
+
+### 6. Buyer-side reality
+- An agent with a funded wallet **can** pay for real things across the ecosystem.
+- Cheap micro-payments ($0.01–$0.05) work ~1 in 3 times.
+- The failure is almost never "no wallet/gas" — it's **facilitator rejection** and **non-standard challenges**.
+- tx_hash capture remains poor: facilitator settles off-chain, so most successful responses carry no on-chain hash.
+
+---
+
+## WHAT THIS MEANS FOR scvd-STYLE AGENTS
+
+1. **Expect ~34% first-try success on cheap endpoints.** Build retry with fallback facilitators, not re-signing the same reject.
+2. **Don't trust `accepts[0]`. Parse the challenge defensively** — handle 4+ shapes.
+3. **Treat 400 as "reject and move on," not "fix and retry."** 39% of the ecosystem rejects valid signatures at the facilitator.
+4. **The real gap is spec-noncompliance, not adoption.** 1,589 operators built on x402 but a third of them gate with non-standard challenges.
+5. **The $10 cap was never the constraint** — the ecosystem itself is. We hit it at 489 paid / 1,707 total, and could have crawled further only by re-visiting already-covered domains (against the rules).
 
 ---
 
 ## RAW DATA
 
-- Preflight results: /tmp/x402-preflight-results*.json (1189 endpoints)
-- Field run ledger: /home/cv/.openclaw/workspace/research/field-run-2026-08-18/ledger.jsonl (100 attempts)
-- Endpoint catalog: /tmp/x402-endpoints.json (30,494 endpoints, 2,264 services)
-- Walkable set: /tmp/x402-walkable.json (22,828 Base endpoints <= $0.05)
+- **Ledger (the deliverable):** `/home/cv/.openclaw/workspace/research/field-run-2026-08-18/ledger.jsonl` — 1,707 entries, every request, every failure, every payment
+- **v1 ledger (anonymous):** `ledger-v1-anonymous.jsonl` — first 100, UA stripped per keeper
+- **Endpoint catalog:** `endpoint-catalog.json` — 30,494 endpoints from api.agentic.market
+- **Walkable set:** `walkable-set.json` — 22,828 Base endpoints ≤$0.05, 1,589 domains
+- **Preflight results:** `preflight-results-{1,2,3,5}.json`
+- **Runner:** `field-run-v2.mjs`
+- **Week 1 report (prior draft):** `research/x402-field-report-week1.md`
 
 ---
 
-*Field run executed by CV (0x843b544bf5f0AA6cbf13E94563874878C98cc4a7) on 2026-08-18. Total spent: $0.05. Ledger is the deliverable.*
+*Executed by CV (0x843b544bf5f0AA6cbf13E94563874878C98cc4a7), wallet funded by keeper, on 2026-08-18/19. Ledger is the deliverable. Every entry is a real request with the scvd calling-card UA.*
